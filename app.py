@@ -1,43 +1,45 @@
 import streamlit as st
-import pickle
+import joblib
 import numpy as np
 
-# Load saved models
-with open("pca.pkl", "rb") as f:
-    pca = pickle.load(f)
+# --- Load Models ---
+@st.cache_resource
+def load_models():
+    try:
+        vectorizer = joblib.load("vectorizer.pkl")
+        pca = joblib.load("pca.pkl")
+        kmeans = joblib.load("kmean.pkl")
+        return vectorizer, pca, kmeans
+    except Exception as e:
+        st.error(f"Model loading failed: {e}")
+        return None, None, None
 
-with open("kmean.pkl", "rb") as f:
-    kmeans = pickle.load(f)
+vectorizer, pca, kmeans = load_models()
 
-# OPTIONAL: Load a vectorizer if your model needs it (e.g., TF-IDF)
-try:
-    with open("vectorizer.pkl", "rb") as f:
-        vectorizer = pickle.load(f)
-except FileNotFoundError:
-    vectorizer = None
-
-# App UI
+# --- Streamlit UI ---
 st.title("📰 News Cluster Predictor")
+st.write("Enter a **news heading** or **news body**, and the app will predict which cluster it belongs to.")
 
-option = st.radio("Choose input type:", ["News Heading", "News Body"])
-
-user_input = st.text_area("Enter your text here:")
+input_type = st.radio("Select Input Type:", ["News Heading", "News Body"])
+text_input = st.text_area(f"Enter your {input_type.lower()} below:")
 
 if st.button("Predict Cluster"):
-    if user_input.strip() == "":
+    if not text_input.strip():
         st.warning("Please enter some text.")
+    elif None in (vectorizer, pca, kmeans):
+        st.error("Models could not be loaded. Check your files.")
     else:
-        # Preprocessing: Convert text to vector
-        if vectorizer:
-            vector = vectorizer.transform([user_input])
-        else:
-            st.error("Vectorizer not found. Please ensure vectorizer.pkl is available.")
-            st.stop()
+        try:
+            # Step 1: Vectorize text
+            vector = vectorizer.transform([text_input])
 
-        # PCA transformation
-        reduced_vector = pca.transform(vector.toarray())
+            # Step 2: PCA transformation
+            reduced_vector = pca.transform(vector.toarray())
 
-        # Predict cluster
-        prediction = kmeans.predict(reduced_vector)
+            # Step 3: Predict cluster
+            cluster = kmeans.predict(reduced_vector)[0]
 
-        st.success(f"🔍 Predicted Cluster: **{prediction[0]}**")
+            st.success(f"🔎 Predicted Cluster: **{cluster}**")
+
+        except Exception as e:
+            st.error(f"Prediction failed: {e}")
